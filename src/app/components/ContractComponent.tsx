@@ -1,5 +1,5 @@
 "use client";
-
+import { ButtonComponent } from "./ButtonComponent";
 import { deployContract } from "@/utils/deployContract";
 import { useState, useEffect, ChangeEvent, use } from "react";
 import { useEthers } from "../hooks/useEthers";
@@ -13,6 +13,9 @@ import { classNames } from "@/utils/object";
 import useLocalStorage from "../hooks/useLocalStorage";
 import axios from "axios";
 import { Move } from "@/enums/move";
+import { formatEther } from "ethers";
+import { Signer } from "ethers";
+import { timeAgo } from "@/utils/time";
 
 export function ContractComponent() {
   const [salt, setSalt] = useLocalStorage("salt", 0);
@@ -28,6 +31,9 @@ export function ContractComponent() {
   const [loading, setLoading] = useState(true);
   const [secondPlayerMove, setSecondPlayerMove] = useState<string>();
   const [isSendingTx, setIsSendingTx] = useState(false);
+  const [lastAction, setLastAction] = useState<number>();
+  const [timeSinceLastAction, setTimeSinceLastAction] = useState<number>();
+  const [shouldShowRefund, setShouldShowRefund] = useState<boolean>(false);
   const { signer, provider } = useEthers();
 
   /**
@@ -49,6 +55,13 @@ export function ContractComponent() {
     if (!contractAddress || contractAddress.length == 0) return;
     setRPSContract(getContract(contractAddress, RPS.abi, signer));
     changeSigner();
+
+    fetchContractData(contractAddress, signer);
+    const interval = setInterval(() => {
+      fetchContractData(contractAddress, signer);
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, [contractAddress, signer]);
 
   /**
@@ -59,6 +72,24 @@ export function ContractComponent() {
       clearState();
     }
   }, [contractAddress]);
+
+  async function fetchContractData(address: string, signer: Signer) {
+    const contract = getContract(address, RPS.abi, signer);
+    const bet = formatEther((await contract.stake()).toString());
+    const firstPlayerAddress = await contract.j1();
+    const secondPlayerAddress = await contract.j2();
+    const secondPlayerMove = await contract.c2();
+    const lastAction = await contract.lastAction();
+    const timeSinceLastAction = Math.floor(Date.now() / 1000 - Number(lastAction));
+
+    setBet(bet);
+    setFirstPlayerAddress(firstPlayerAddress);
+    setSecondPlayerAddress(secondPlayerAddress);
+    setSecondPlayerMove(secondPlayerMove);
+    setLastAction(Number(lastAction));
+    setTimeSinceLastAction(timeSinceLastAction);
+    setShouldShowRefund(timeSinceLastAction >= 300);
+  }
 
   async function deploy() {
     if (!signer) return;
@@ -138,15 +169,35 @@ export function ContractComponent() {
     setIsSendingTx(false);
   }
 
+  async function timeout() {
+    if (shouldShowRefund) {
+      try {
+        let tx;
+        if (currentAddress == firstPlayerAddress) {
+          tx = await RPSContract?.j2Timeout();
+        } else if (currentAddress == secondPlayerAddress) {
+          tx = await RPSContract?.j1Timeout();
+        } else {
+          return;
+        }
+
+        const receipt = await tx.wait();
+
+        /** The contract is solved */
+        if (receipt.status === 1) {
+          resetGame();
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    }
+  }
+
   async function fetchContract() {
     await axios
       .get("/api/contract")
       .then((res) => {
         setContractAddress(res.data.address || undefined);
-        if (res.data.firstPlayerAddress) setFirstPlayerAddress(res.data.firstPlayerAddress);
-        if (res.data.secondPlayerAddress) setSecondPlayerAddress(res.data.secondPlayerAddress);
-        if (res.data.bet) setBet(res.data.bet);
-        if (res.data.secondPlayerMove) setSecondPlayerMove(res.data.secondPlayerMove);
       })
       .catch((err) => {});
 
@@ -189,19 +240,7 @@ export function ContractComponent() {
       return (
         <div>
           <div className="w-full container mt-10">The second player is done, lets resolve the game!</div>
-          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => solve()} disabled={isSendingTx}>
-            {isSendingTx ? (
-              <div className="flex items-center">
-                <svg className="animate-spin mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Solving game...</span>
-              </div>
-            ) : (
-              "Solve Game"
-            )}
-          </button>
+          <ButtonComponent call={solve} isSendingTx={isSendingTx} text="Solve Game" sendingText="Solving game..." />
         </div>
       );
     }
@@ -210,13 +249,21 @@ export function ContractComponent() {
       return (
         <div>
           <div className="w-full container mt-10">Your move is Set, lets wait for the first player to resolve the game!</div>
+          {lastAction && <div>Last action {timeAgo(Number(new Date(lastAction * 1000)))}</div>}
+          {shouldShowRefund && <ButtonComponent call={timeout} isSendingTx={isSendingTx} text="Claim  your price!" sendingText="claiming..." />}
         </div>
       );
     }
   }
 
   if (contractAddress && contractAddress.length > 0 && currentAddress !== secondPlayerAddress) {
-    return <div className="w-full container mt-10">Game started, waiting for second player... ({secondPlayerAddress})</div>;
+    return (
+      <div>
+        <div className="w-full container mt-10">Game started, waiting for second player... ({secondPlayerAddress})</div>
+        {lastAction && <div>Last action {timeAgo(Number(new Date(lastAction * 1000)))}</div>}
+        {shouldShowRefund && <ButtonComponent call={timeout} isSendingTx={isSendingTx} text="Refund your Token" sendingText="refunding..." />}
+      </div>
+    );
   }
 
   return (
@@ -329,33 +376,9 @@ export function ContractComponent() {
       </div>
       <div className="flex items-center gap-4">
         {!contractAddress ? (
-          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => deploy()} disabled={isSendingTx}>
-            {isSendingTx ? (
-              <div className="flex items-center">
-                <svg className="animate-spin mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Deploying contract...</span>
-              </div>
-            ) : (
-              "Start Game"
-            )}
-          </button>
+          <ButtonComponent call={deploy} isSendingTx={isSendingTx} text="Start Game" sendingText="Deploying contract..." />
         ) : (
-          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => play()} disabled={isSendingTx}>
-            {isSendingTx ? (
-              <div className="flex items-center">
-                <svg className="animate-spin mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Sending transaction...</span>
-              </div>
-            ) : (
-              "Play Game"
-            )}
-          </button>
+          <ButtonComponent call={play} isSendingTx={isSendingTx} text="Play Game" sendingText="Sending transaction..." />
         )}
         <div>Bet: {bet} ETH</div>
       </div>

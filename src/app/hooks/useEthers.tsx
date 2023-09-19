@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { initEthers } from "@/utils/initEthers";
 
 export function useEthers() {
-  const [provider, setProvider] = useState<ethers.Provider | null>(null);
+  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);

@@ -3,15 +3,27 @@ import { useState, useEffect } from "react";
 import { useEthers } from "../hooks/useEthers";
 
 export function ConnectWallet() {
-  const { signer, loading, error, init } = useEthers();
+  const { signer, provider, loading, error, init } = useEthers();
   const [userAddress, setUserAddress] = useState<string | null>(null);
+  const [network, setNetwork] = useState<string | null>(null);
 
   useEffect(() => {
     if (!signer) return;
     connectToMetaMask();
   }, [signer]);
 
-  const connectToMetaMask = async () => {
+  useEffect(() => {
+    if (!provider) return;
+    provider.getNetwork().then((network) => {
+      setNetwork(network.name);
+    });
+
+    provider.provider.on("network", (chainId) => {
+      setNetwork(chainId);
+    });
+  }, [provider]);
+
+  async function connectToMetaMask() {
     if (!signer) {
       console.log("No signer, run useEthers init");
       init();
@@ -23,11 +35,17 @@ export function ConnectWallet() {
     } catch (err) {
       console.error("Error connecting to MetaMask:", err);
     }
-  };
+  }
 
-  const logout = () => {
+  async function changeNetwork() {
+    if (!provider) return;
+    await provider.provider.send?.("wallet_switchEthereumChain", [{ chainId: "0xaa36a7" }]);
+    window.location.reload();
+  }
+
+  function logout() {
     setUserAddress(null);
-  };
+  }
 
   if (loading) {
     return <button className="bg-amber-500 text-white p-2 rounded-md">Connecting...</button>;
@@ -49,7 +67,13 @@ export function ConnectWallet() {
           <button onClick={logout} className="bg-amber-500	 text-white p-2 rounded-md">
             Logout as {shortenAddress(userAddress)}
           </button>
-          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1">Chain</button>
+          {network !== "sepolia" ? (
+            <button className="bg-red-500	 text-white p-2 rounded-md ml-1" onClick={() => changeNetwork()}>
+              Wrong Network, change to sepolia
+            </button>
+          ) : (
+            <button className="bg-amber-500	 text-white p-2 rounded-md ml-1">{network}</button>
+          )}
         </div>
       )}
     </div>

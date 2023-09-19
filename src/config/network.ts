@@ -1,7 +1,7 @@
 const providerRPC = {
   sepholia: {
     chainId: 11155111,
-    chainName: "Sepolia test network",
+    chainName: "Sepolia",
     network: "sepolia",
     rpc: process.env.INFURA_API_KEY,
     rpcUrls: ["https://sepolia.infura.io/v3/"],

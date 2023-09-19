@@ -1,4 +1,3 @@
-import React from "react";
 export function ButtonComponent({ call, isSendingTx, text, sendingText }: { call: () => Promise<void>; isSendingTx: boolean; text: string; sendingText: string }) {
   return (
     <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => call()} disabled={isSendingTx}>

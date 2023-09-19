@@ -24,7 +24,6 @@ export function ContractComponent() {
   const [currentAddress, setCurrentAddress] = useState<string>();
   const [firstPlayerAddress, setFirstPlayerAddress] = useState<string>();
   const [secondPlayerAddress, setSecondPlayerAddress] = useState<string>("");
-  const [hash, setHash] = useState<string>();
   const [RPSContract, setRPSContract] = useState<Contract>();
   const [bet, setBet] = useState("0.01");
   const [validSecondPlayerAddress, setValidSecondPlayerAddress] = useState(false);
@@ -32,9 +31,8 @@ export function ContractComponent() {
   const [secondPlayerMove, setSecondPlayerMove] = useState<string>();
   const [isSendingTx, setIsSendingTx] = useState(false);
   const [lastAction, setLastAction] = useState<number>();
-  const [timeSinceLastAction, setTimeSinceLastAction] = useState<number>();
   const [shouldShowRefund, setShouldShowRefund] = useState<boolean>(false);
-  const { signer, provider } = useEthers();
+  const { signer } = useEthers();
 
   /**
    * On mount, fetch the contract from the database.
@@ -87,7 +85,6 @@ export function ContractComponent() {
     setSecondPlayerAddress(secondPlayerAddress);
     setSecondPlayerMove(secondPlayerMove);
     setLastAction(Number(lastAction));
-    setTimeSinceLastAction(timeSinceLastAction);
     setShouldShowRefund(timeSinceLastAction >= 300);
   }
 
@@ -106,12 +103,10 @@ export function ContractComponent() {
       /** Hash */
       const hasherContract = getContract(Hasher.address, Hasher.abi, signer);
       const hash = await hasherContract.hash(move, salt);
-      setHash(hash.toString());
 
       /** Deploy */
       const contract = await deployContract(signer, hash, secondPlayerAddress, bet);
       setContractAddress(contract.target.toString());
-      console.log("Contract deployed:", contract.target);
 
       /** Store Contract Address */
       await axios.post("/api/contract", { address: contract.target.toString(), salt, secondPlayerAddress, bet });
@@ -208,8 +203,8 @@ export function ContractComponent() {
     try {
       const res = await axios.delete("/api/contract");
       clearState();
-    } catch (err) {
-      return console.log(err);
+    } catch (error) {
+      console.log(error);
     }
   }
 

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useEthers } from "../hooks/useEthers";
 
 export function ConnectWallet() {
-  const { signer, provider, loading, error, init } = useEthers();
+  const { signer, provider, loading, init } = useEthers();
   const [userAddress, setUserAddress] = useState<string | null>(null);
   const [network, setNetwork] = useState<string | null>(null);
 
@@ -25,7 +25,6 @@ export function ConnectWallet() {
 
   async function connectToMetaMask() {
     if (!signer) {
-      console.log("No signer, run useEthers init");
       init();
       return;
     }

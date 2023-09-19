@@ -1,7 +1,5 @@
-import { Contract } from "ethers";
-import RPS from "@/app/contracts/RPS.json";
-import { Signer, Provider } from "ethers";
+import { Contract, type Signer, type Provider, type Interface, type InterfaceAbi } from "ethers";
 
-export function getContract(addresss: string, signerOrProvider: Signer | Provider): Contract {
-  return new Contract(addresss, RPS.abi, signerOrProvider);
+export function getContract(addresss: string, abi: Interface | InterfaceAbi, signerOrProvider: Signer | Provider): Contract {
+  return new Contract(addresss, abi, signerOrProvider);
 }

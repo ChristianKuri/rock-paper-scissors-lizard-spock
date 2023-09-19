@@ -1,19 +1,20 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useEthers } from "../hooks/useEthers";
-import deployContract from "@/utils/deployContract";
 
 export function ConnectWallet() {
-  const { signer, loading, error } = useEthers();
+  const { signer, loading, error, init } = useEthers();
   const [userAddress, setUserAddress] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!signer) return;
     connectToMetaMask();
   }, [signer]);
 
   const connectToMetaMask = async () => {
     if (!signer) {
-      console.log("Unable to connect to MetaMask.");
+      console.log("No signer, run useEthers init");
+      init();
       return;
     }
     try {
@@ -29,11 +30,7 @@ export function ConnectWallet() {
   };
 
   if (loading) {
-    return <div>Loading...</div>;
-  }
-
-  if (error) {
-    return <div>Error: Unable to connect to MetaMask.</div>;
+    return <button className="bg-amber-500 text-white p-2 rounded-md">Connecting...</button>;
   }
 
   function shortenAddress(address: string): string {

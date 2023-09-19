@@ -1,7 +1,4 @@
-import { sepoliaNetwork } from "@/config/network";
 import { ethers } from "ethers";
-
-const PROVIDER_URL = process.env.PROVIDER_URL || "http://localhost:3000";
 
 declare global {
   interface Window {
@@ -9,9 +6,9 @@ declare global {
   }
 }
 
-export async function initEthers(): Promise<{ provider: ethers.Provider; signer: ethers.Signer | null }> {
+export async function initEthers(): Promise<{ provider: ethers.BrowserProvider | null; signer: ethers.Signer | null }> {
   let signer: ethers.Signer | null = null;
-  let provider: ethers.Provider | null = null;
+  let provider: ethers.BrowserProvider | null = null;
 
   try {
     const isClient = typeof window !== "undefined";
@@ -21,8 +18,6 @@ export async function initEthers(): Promise<{ provider: ethers.Provider; signer:
       if (provider instanceof ethers.BrowserProvider) {
         signer = await provider.getSigner();
       }
-    } else {
-      provider = ethers.getDefaultProvider(PROVIDER_URL);
     }
 
     return { provider, signer };

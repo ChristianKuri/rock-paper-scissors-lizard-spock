@@ -9,14 +9,13 @@ import providerRPC from "@/config/network";
 };
 
 export async function GET(request: Request) {
+  const address: string | null = await kv.get("contract_address");
+  if (!address) return Response.json({}, { status: 200 });
+
   const provider = new JsonRpcProvider(providerRPC.sepholia.rpc, {
-    name: providerRPC.sepholia.name,
+    name: providerRPC.sepholia.chainName,
     chainId: providerRPC.sepholia.chainId,
   });
-
-  const address: string | null = await kv.get("contract_address");
-  if (!address) return new Response("Contract address not set", { status: 404 });
-
   const contract = getContract(address, RPS.abi, provider);
   const bet = formatEther((await contract.stake()).toString());
   const firstPlayerAddress = await contract.j1();
@@ -59,7 +58,7 @@ export async function POST(request: Request) {
 export async function DELETE() {
   try {
     const provider = new JsonRpcProvider(providerRPC.sepholia.rpc, {
-      name: providerRPC.sepholia.name,
+      name: providerRPC.sepholia.chainName,
       chainId: providerRPC.sepholia.chainId,
     });
 

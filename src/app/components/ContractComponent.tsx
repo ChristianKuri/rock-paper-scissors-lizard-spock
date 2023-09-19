@@ -20,19 +20,30 @@ export function ContractComponent() {
   const [contractAddress, setContractAddress] = useState<string>();
   const [currentAddress, setCurrentAddress] = useState<string>();
   const [firstPlayerAddress, setFirstPlayerAddress] = useState<string>();
-  const [secondPlayerAddress, setSecondPlayerAddress] = useState<string>();
+  const [secondPlayerAddress, setSecondPlayerAddress] = useState<string>("");
   const [hash, setHash] = useState<string>();
   const [RPSContract, setRPSContract] = useState<Contract>();
   const [bet, setBet] = useState("0.01");
   const [validSecondPlayerAddress, setValidSecondPlayerAddress] = useState(false);
   const [loading, setLoading] = useState(true);
   const [secondPlayerMove, setSecondPlayerMove] = useState<string>();
-  const { signer } = useEthers();
+  const [isSendingTx, setIsSendingTx] = useState(false);
+  const { signer, provider } = useEthers();
 
+  /**
+   * On mount, fetch the contract from the database.
+   */
   useEffect(() => {
     fetchContract();
+    const interval = setInterval(() => {
+      fetchContract();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
+  /**
+   * If the contract address is set, fetch the contract and set the contract state.
+   */
   useEffect(() => {
     if (!signer) return;
     if (!contractAddress || contractAddress.length == 0) return;
@@ -40,26 +51,45 @@ export function ContractComponent() {
     changeSigner();
   }, [contractAddress, signer]);
 
+  /**
+   * If the contract address is removed from the database, clear the state, the game is over.
+   */
+  useEffect(() => {
+    if (!contractAddress) {
+      clearState();
+    }
+  }, [contractAddress]);
+
   async function deploy() {
     if (!signer) return;
     if (!secondPlayerAddress || !validSecondPlayerAddress) return;
 
-    /** Salt */
-    const salt = generateSalt();
-    setSalt(salt);
+    /** set loading state */
+    setIsSendingTx(true);
 
-    /** Hash */
-    const hasherContract = getContract(Hasher.address, Hasher.abi, signer);
-    const hash = await hasherContract.hash(move, salt);
-    setHash(hash.toString());
+    try {
+      /** Salt */
+      const salt = generateSalt();
+      setSalt(salt);
 
-    /** Deploy */
-    const contract = await deployContract(signer, hash, secondPlayerAddress, bet);
-    setContractAddress(contract.target.toString());
-    console.log("Contract deployed:", contract.target);
+      /** Hash */
+      const hasherContract = getContract(Hasher.address, Hasher.abi, signer);
+      const hash = await hasherContract.hash(move, salt);
+      setHash(hash.toString());
 
-    /** Store Contract Address */
-    await axios.post("/api/contract", { address: contract.target.toString(), salt, secondPlayerAddress, bet });
+      /** Deploy */
+      const contract = await deployContract(signer, hash, secondPlayerAddress, bet);
+      setContractAddress(contract.target.toString());
+      console.log("Contract deployed:", contract.target);
+
+      /** Store Contract Address */
+      await axios.post("/api/contract", { address: contract.target.toString(), salt, secondPlayerAddress, bet });
+    } catch (error) {
+      console.log(error);
+    }
+
+    /** set loading state */
+    setIsSendingTx(false);
   }
 
   async function play() {
@@ -67,10 +97,20 @@ export function ContractComponent() {
     if (currentAddress !== secondPlayerAddress) return;
     if (!move) return;
 
-    console.log("You can play");
+    /** set loading state */
+    setIsSendingTx(true);
 
-    /** Play */
-    await RPSContract?.play(move, { value: parseEther(bet) });
+    try {
+      /** Play */
+      const tx = await RPSContract?.play(move, { value: parseEther(bet) });
+      const receipt = await tx.wait();
+      await fetchContract();
+    } catch (error) {
+      console.log(error);
+    }
+
+    /** set loading state */
+    setIsSendingTx(false);
   }
 
   async function solve() {
@@ -78,16 +118,31 @@ export function ContractComponent() {
     if (!move) return;
     if (!salt) return;
 
-    /** Solve */
-    await RPSContract?.solve(move, salt);
-    await axios.delete("/api/contract");
+    /** set loading state */
+    setIsSendingTx(true);
+
+    try {
+      /** Solve */
+      const tx = await RPSContract?.solve(move, salt);
+      const receipt = await tx.wait();
+
+      /** The contract is solved */
+      if (receipt.status === 1) {
+        resetGame();
+      }
+    } catch (error) {
+      console.log(error);
+    }
+
+    /** set loading state */
+    setIsSendingTx(false);
   }
 
   async function fetchContract() {
     await axios
       .get("/api/contract")
       .then((res) => {
-        if (res.data.address) setContractAddress(res.data.address);
+        setContractAddress(res.data.address || undefined);
         if (res.data.firstPlayerAddress) setFirstPlayerAddress(res.data.firstPlayerAddress);
         if (res.data.secondPlayerAddress) setSecondPlayerAddress(res.data.secondPlayerAddress);
         if (res.data.bet) setBet(res.data.bet);
@@ -96,6 +151,23 @@ export function ContractComponent() {
       .catch((err) => {});
 
     setLoading(false);
+  }
+
+  async function resetGame() {
+    try {
+      const res = await axios.delete("/api/contract");
+      clearState();
+    } catch (err) {
+      return console.log(err);
+    }
+  }
+
+  function clearState() {
+    setContractAddress(undefined);
+    setFirstPlayerAddress(undefined);
+    setSecondPlayerAddress("");
+    setBet("0.01");
+    setSecondPlayerMove(undefined);
   }
 
   function validateSecondPlayerAddress(e: ChangeEvent<HTMLInputElement>) {
@@ -112,15 +184,35 @@ export function ContractComponent() {
 
   if (loading) return <div className="w-full container mt-10">Loading...</div>;
 
-  if (secondPlayerMove && currentAddress === firstPlayerAddress) {
-    return (
-      <div>
-        <div className="w-full container mt-10">The second player is done, lets resolve the game!</div>
-        <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => solve()}>
-          Solve
-        </button>
-      </div>
-    );
+  if (contractAddress && Number(secondPlayerMove) !== 0) {
+    if (currentAddress === firstPlayerAddress) {
+      return (
+        <div>
+          <div className="w-full container mt-10">The second player is done, lets resolve the game!</div>
+          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => solve()} disabled={isSendingTx}>
+            {isSendingTx ? (
+              <div className="flex items-center">
+                <svg className="animate-spin mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Solving game...</span>
+              </div>
+            ) : (
+              "Solve Game"
+            )}
+          </button>
+        </div>
+      );
+    }
+
+    if (currentAddress === secondPlayerAddress) {
+      return (
+        <div>
+          <div className="w-full container mt-10">Your move is Set, lets wait for the first player to resolve the game!</div>
+        </div>
+      );
+    }
   }
 
   if (contractAddress && contractAddress.length > 0 && currentAddress !== secondPlayerAddress) {
@@ -237,12 +329,32 @@ export function ContractComponent() {
       </div>
       <div className="flex items-center gap-4">
         {!contractAddress ? (
-          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => deploy()}>
-            Start Game
+          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => deploy()} disabled={isSendingTx}>
+            {isSendingTx ? (
+              <div className="flex items-center">
+                <svg className="animate-spin mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Deploying contract...</span>
+              </div>
+            ) : (
+              "Start Game"
+            )}
           </button>
         ) : (
-          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => play()}>
-            Play
+          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => play()} disabled={isSendingTx}>
+            {isSendingTx ? (
+              <div className="flex items-center">
+                <svg className="animate-spin mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Sending transaction...</span>
+              </div>
+            ) : (
+              "Play Game"
+            )}
           </button>
         )}
         <div>Bet: {bet} ETH</div>

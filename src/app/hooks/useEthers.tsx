@@ -9,7 +9,6 @@ export function useEthers() {
   const [error, setError] = useState<Error | null>(null);
 
   async function init() {
-    console.log("useEthers init");
     try {
       setLoading(true);
       const { provider: initializedProvider, signer: initializedSigner } = await initEthers();

@@ -1,9 +1,9 @@
-import { Networkish } from "ethers";
-import { sepolia } from "@wagmi/chains";
-
-const sepoliaNetwork: Networkish = {
-  name: sepolia.name,
-  chainId: sepolia.id,
+const providerRPC = {
+  sepholia: {
+    name: "Sepolia",
+    rpc: process.env.INFURA_API_KEY,
+    chainId: 11155111,
+  },
 };
 
-export { sepoliaNetwork };
+export default providerRPC;

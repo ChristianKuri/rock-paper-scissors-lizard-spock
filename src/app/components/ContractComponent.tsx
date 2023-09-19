@@ -1,9 +1,9 @@
 "use client";
 
 import { deployContract } from "@/utils/deployContract";
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent, use } from "react";
 import { useEthers } from "../hooks/useEthers";
-import { type Contract } from "ethers";
+import { parseEther, type Contract } from "ethers";
 import { getContract } from "@/utils/getContract";
 import Hasher from "@/app/contracts/Hasher.json";
 import RPS from "@/app/contracts/RPS.json";
@@ -11,36 +11,39 @@ import { generateSalt } from "@/utils/random";
 import { isAddress } from "web3-validator";
 import { classNames } from "@/utils/object";
 import useLocalStorage from "../hooks/useLocalStorage";
+import axios from "axios";
+import { Move } from "@/enums/move";
 
 export function ContractComponent() {
-  enum Move {
-    Null,
-    Rock,
-    Paper,
-    Scissors,
-    Spock,
-    Lizard,
-  }
-
-  const [contractAddress, setContractAddress] = useLocalStorage("contractAddress", "");
   const [salt, setSalt] = useLocalStorage("salt", 0);
   const [move, setMove] = useLocalStorage("move", Move.Null);
-  const [hash, setHash] = useLocalStorage("hash", "");
-  const [RPSContract, setRPSContract] = useState<Contract>();
+  const [contractAddress, setContractAddress] = useState<string>();
+  const [currentAddress, setCurrentAddress] = useState<string>();
+  const [firstPlayerAddress, setFirstPlayerAddress] = useState<string>();
   const [secondPlayerAddress, setSecondPlayerAddress] = useState<string>();
+  const [hash, setHash] = useState<string>();
+  const [RPSContract, setRPSContract] = useState<Contract>();
   const [bet, setBet] = useState("0.01");
   const [validSecondPlayerAddress, setValidSecondPlayerAddress] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [secondPlayerMove, setSecondPlayerMove] = useState<string>();
   const { signer } = useEthers();
 
   useEffect(() => {
+    fetchContract();
+  }, []);
+
+  useEffect(() => {
     if (!signer) return;
-    if (contractAddress.length == 0) return;
+    if (!contractAddress || contractAddress.length == 0) return;
     setRPSContract(getContract(contractAddress, RPS.abi, signer));
+    changeSigner();
   }, [contractAddress, signer]);
 
   async function deploy() {
     if (!signer) return;
     if (!secondPlayerAddress || !validSecondPlayerAddress) return;
+
     /** Salt */
     const salt = generateSalt();
     setSalt(salt);
@@ -54,6 +57,45 @@ export function ContractComponent() {
     const contract = await deployContract(signer, hash, secondPlayerAddress, bet);
     setContractAddress(contract.target.toString());
     console.log("Contract deployed:", contract.target);
+
+    /** Store Contract Address */
+    await axios.post("/api/contract", { address: contract.target.toString(), salt, secondPlayerAddress, bet });
+  }
+
+  async function play() {
+    if (!signer) return;
+    if (currentAddress !== secondPlayerAddress) return;
+    if (!move) return;
+
+    console.log("You can play");
+
+    /** Play */
+    await RPSContract?.play(move, { value: parseEther(bet) });
+  }
+
+  async function solve() {
+    if (!signer) return;
+    if (!move) return;
+    if (!salt) return;
+
+    /** Solve */
+    await RPSContract?.solve(move, salt);
+    await axios.delete("/api/contract");
+  }
+
+  async function fetchContract() {
+    await axios
+      .get("/api/contract")
+      .then((res) => {
+        if (res.data.address) setContractAddress(res.data.address);
+        if (res.data.firstPlayerAddress) setFirstPlayerAddress(res.data.firstPlayerAddress);
+        if (res.data.secondPlayerAddress) setSecondPlayerAddress(res.data.secondPlayerAddress);
+        if (res.data.bet) setBet(res.data.bet);
+        if (res.data.secondPlayerMove) setSecondPlayerMove(res.data.secondPlayerMove);
+      })
+      .catch((err) => {});
+
+    setLoading(false);
   }
 
   function validateSecondPlayerAddress(e: ChangeEvent<HTMLInputElement>) {
@@ -62,50 +104,75 @@ export function ContractComponent() {
     setSecondPlayerAddress(address);
   }
 
+  async function changeSigner() {
+    if (!signer) return;
+    const address = await signer.getAddress();
+    setCurrentAddress(address);
+  }
+
+  if (loading) return <div className="w-full container mt-10">Loading...</div>;
+
+  if (secondPlayerMove && currentAddress === firstPlayerAddress) {
+    return (
+      <div>
+        <div className="w-full container mt-10">The second player is done, lets resolve the game!</div>
+        <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => solve()}>
+          Solve
+        </button>
+      </div>
+    );
+  }
+
+  if (contractAddress && contractAddress.length > 0 && currentAddress !== secondPlayerAddress) {
+    return <div className="w-full container mt-10">Game started, waiting for second player... ({secondPlayerAddress})</div>;
+  }
+
   return (
     <div className="w-full container">
-      <div className="mt-10 grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-6">
-        <div className="md:col-span-3">
-          <label htmlFor="address" className="block text-sm font-medium leading-6 text-gray-900">
-            Second Player Address
-          </label>
-          <div className="mt-2">
-            <input
-              value={secondPlayerAddress}
-              onChange={(e) => validateSecondPlayerAddress(e)}
-              type="text"
-              name="address"
-              id="address"
-              placeholder="0x0000000000000000000000000000000000000000"
-              className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-            />
+      {!contractAddress && (
+        <div className="mt-10 grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-6">
+          <div className="md:col-span-3">
+            <label htmlFor="address" className="block text-sm font-medium leading-6 text-gray-900">
+              Second Player Address
+            </label>
+            <div className="mt-2">
+              <input
+                value={secondPlayerAddress}
+                onChange={(e) => validateSecondPlayerAddress(e)}
+                type="text"
+                name="address"
+                id="address"
+                placeholder="0x0000000000000000000000000000000000000000"
+                className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+              />
+            </div>
+            {!validSecondPlayerAddress && secondPlayerAddress && (
+              <p className="mt-2 text-sm text-red-600" id="email-error">
+                Not a valid address.
+              </p>
+            )}
           </div>
-          {!validSecondPlayerAddress && secondPlayerAddress && (
-            <p className="mt-2 text-sm text-red-600" id="email-error">
-              Not a valid address.
-            </p>
-          )}
-        </div>
 
-        <div className="md:col-span-3">
-          <label htmlFor="bet" className="block text-sm font-medium leading-6 text-gray-900">
-            Bet
-          </label>
+          <div className="md:col-span-3">
+            <label htmlFor="bet" className="block text-sm font-medium leading-6 text-gray-900">
+              Bet
+            </label>
 
-          <div className="mt-2">
-            <input
-              type="range"
-              min="0.01"
-              max="1.00"
-              step="0.01"
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-              value={bet}
-              onChange={(e) => setBet(e.target.value)}
-            />
-            {bet} ETH
+            <div className="mt-2">
+              <input
+                type="range"
+                min="0.01"
+                max="1.00"
+                step="0.01"
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                value={bet}
+                onChange={(e) => setBet(e.target.value)}
+              />
+              {bet} ETH
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div className="mt-4 flex flex-wrap gap-2">
         <div
           className={classNames(
@@ -168,10 +235,18 @@ export function ContractComponent() {
           <span>Spock</span>
         </div>
       </div>
-
-      <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => deploy()}>
-        Start Game
-      </button>
+      <div className="flex items-center gap-4">
+        {!contractAddress ? (
+          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => deploy()}>
+            Start Game
+          </button>
+        ) : (
+          <button className="bg-amber-500	 text-white p-2 rounded-md ml-1 mt-2" onClick={() => play()}>
+            Play
+          </button>
+        )}
+        <div>Bet: {bet} ETH</div>
+      </div>
     </div>
   );
 }

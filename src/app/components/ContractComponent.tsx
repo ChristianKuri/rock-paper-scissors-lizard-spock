@@ -52,7 +52,6 @@ export function ContractComponent() {
     if (!signer) return;
     if (!contractAddress || contractAddress.length == 0) return;
     setRPSContract(getContract(contractAddress, RPS.abi, signer));
-    changeSigner();
 
     fetchContractData(contractAddress, signer);
     const interval = setInterval(() => {
@@ -63,6 +62,14 @@ export function ContractComponent() {
   }, [contractAddress, signer]);
 
   /**
+   * If the signer is set, fetch the current address.
+   */
+  useEffect(() => {
+    if (!signer) return;
+    changeSigner();
+  }, [signer]);
+
+  /**
    * If the contract address is removed from the database, clear the state, the game is over.
    */
   useEffect(() => {
@@ -71,6 +78,13 @@ export function ContractComponent() {
     }
   }, [contractAddress]);
 
+  /**
+   * Fetch the contract data from the blockchain.
+   *
+   * @param address The contract address.
+   * @param signer The signer.
+   * @returns Promise<void>
+   */
   async function fetchContractData(address: string, signer: Signer) {
     const contract = getContract(address, RPS.abi, signer);
     const bet = formatEther((await contract.stake()).toString());
@@ -88,6 +102,11 @@ export function ContractComponent() {
     setShouldShowRefund(timeSinceLastAction >= 300);
   }
 
+  /**
+   * Deploy the contract.
+   *
+   * @returns Promise<void>
+   */
   async function deploy() {
     if (!signer) return;
     if (!secondPlayerAddress || !validSecondPlayerAddress) return;
@@ -118,6 +137,11 @@ export function ContractComponent() {
     setIsSendingTx(false);
   }
 
+  /**
+   * If the second player is the current address, play the game.
+   *
+   * @returns Promise<void>
+   */
   async function play() {
     if (!signer) return;
     if (currentAddress !== secondPlayerAddress) return;
@@ -139,6 +163,11 @@ export function ContractComponent() {
     setIsSendingTx(false);
   }
 
+  /**
+   * If the current address is the first player, solve the game.
+   *
+   * @returns Promise<void>
+   */
   async function solve() {
     if (!signer) return;
     if (!move) return;
@@ -164,6 +193,11 @@ export function ContractComponent() {
     setIsSendingTx(false);
   }
 
+  /**
+   *  If the other player stoped playing claim the funds.
+   *
+   * @returns Promise<void>
+   */
   async function timeout() {
     if (shouldShowRefund) {
       try {
@@ -188,6 +222,9 @@ export function ContractComponent() {
     }
   }
 
+  /**
+   * Fetch the contract address from the redis database.
+   */
   async function fetchContract() {
     await axios
       .get("/api/contract")
@@ -199,6 +236,9 @@ export function ContractComponent() {
     setLoading(false);
   }
 
+  /**
+   * Reset the game.
+   */
   async function resetGame() {
     try {
       const res = await axios.delete("/api/contract");
@@ -208,6 +248,9 @@ export function ContractComponent() {
     }
   }
 
+  /**
+   * Clear the state so we can start a new game.
+   */
   function clearState() {
     setContractAddress(undefined);
     setFirstPlayerAddress(undefined);
@@ -216,9 +259,15 @@ export function ContractComponent() {
     setSecondPlayerMove(undefined);
   }
 
+  /**
+   * Validate the second player address.
+   *
+   * @param e  The event.
+   */
   function validateSecondPlayerAddress(e: ChangeEvent<HTMLInputElement>) {
     const address = e.target.value;
-    isAddress(address) ? setValidSecondPlayerAddress(true) : setValidSecondPlayerAddress(false);
+    console.log(address, currentAddress);
+    isAddress(address) && address !== currentAddress ? setValidSecondPlayerAddress(true) : setValidSecondPlayerAddress(false);
     setSecondPlayerAddress(address);
   }
 

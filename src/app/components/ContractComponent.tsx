@@ -23,7 +23,7 @@ export function ContractComponent() {
   const [contractAddress, setContractAddress] = useState<string>();
   const [currentAddress, setCurrentAddress] = useState<string>();
   const [firstPlayerAddress, setFirstPlayerAddress] = useState<string>();
-  const [secondPlayerAddress, setSecondPlayerAddress] = useState<string>("");
+  const [secondPlayerAddress, setSecondPlayerAddress] = useState<string>();
   const [RPSContract, setRPSContract] = useState<Contract>();
   const [bet, setBet] = useState("0.01");
   const [validSecondPlayerAddress, setValidSecondPlayerAddress] = useState(false);
@@ -95,6 +95,9 @@ export function ContractComponent() {
     const lastAction = Number(await contract.lastAction());
     const timeAgoforHumans = timeAgo(Number(new Date(lastAction * 1000)));
     const timeSinceLastAction = Math.floor(Date.now() / 1000 - lastAction);
+
+    /** If bet is 0 it means that the game is over and  it should not fetch from the same contract */
+    if (bet == "0.00") return;
 
     setBet(bet);
     setFirstPlayerAddress(firstPlayerAddress);
@@ -257,7 +260,7 @@ export function ContractComponent() {
   function clearState() {
     setContractAddress(undefined);
     setFirstPlayerAddress(undefined);
-    setSecondPlayerAddress("");
+    setSecondPlayerAddress(undefined);
     setBet("0.01");
     setSecondPlayerMove(undefined);
   }

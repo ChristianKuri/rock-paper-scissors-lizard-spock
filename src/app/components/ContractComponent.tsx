@@ -32,6 +32,7 @@ export function ContractComponent() {
   const [isSendingTx, setIsSendingTx] = useState(false);
   const [lastAction, setLastAction] = useState<number>();
   const [shouldShowRefund, setShouldShowRefund] = useState<boolean>(false);
+  const [timeAgoforHumans, setTimeAgoforHumans] = useState<string>();
   const { signer } = useEthers();
 
   /**
@@ -91,14 +92,16 @@ export function ContractComponent() {
     const firstPlayerAddress = await contract.j1();
     const secondPlayerAddress = await contract.j2();
     const secondPlayerMove = await contract.c2();
-    const lastAction = await contract.lastAction();
-    const timeSinceLastAction = Math.floor(Date.now() / 1000 - Number(lastAction));
+    const lastAction = Number(await contract.lastAction());
+    const timeAgoforHumans = timeAgo(Number(new Date(lastAction * 1000)));
+    const timeSinceLastAction = Math.floor(Date.now() / 1000 - lastAction);
 
     setBet(bet);
     setFirstPlayerAddress(firstPlayerAddress);
     setSecondPlayerAddress(secondPlayerAddress);
     setSecondPlayerMove(secondPlayerMove);
-    setLastAction(Number(lastAction));
+    setLastAction(lastAction);
+    setTimeAgoforHumans(timeAgoforHumans);
     setShouldShowRefund(timeSinceLastAction >= 300);
   }
 
@@ -293,7 +296,7 @@ export function ContractComponent() {
       return (
         <div>
           <div className="w-full container mt-10">Your move is Set, lets wait for the first player to resolve the game!</div>
-          {lastAction && <div>Last action {timeAgo(Number(new Date(lastAction * 1000)))}</div>}
+          {lastAction && <div>Last action {timeAgoforHumans}</div>}
           {shouldShowRefund && <ButtonComponent call={timeout} isSendingTx={isSendingTx} text="Claim  your price!" sendingText="claiming..." />}
         </div>
       );
@@ -304,7 +307,7 @@ export function ContractComponent() {
     return (
       <div>
         <div className="w-full container mt-10">Game started, waiting for second player... ({secondPlayerAddress})</div>
-        {lastAction && <div>Last action {timeAgo(Number(new Date(lastAction * 1000)))}</div>}
+        {lastAction && <div>Last action {timeAgoforHumans}</div>}
         {shouldShowRefund && <ButtonComponent call={timeout} isSendingTx={isSendingTx} text="Refund your Token" sendingText="refunding..." />}
       </div>
     );

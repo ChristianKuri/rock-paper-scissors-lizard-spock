@@ -26,7 +26,5 @@ export const timeAgo = (date: number) => {
     return interval + " minutes ago";
   }
 
-  if (seconds < 10) return "just now";
-
   return Math.floor(seconds) + " seconds ago";
 };
